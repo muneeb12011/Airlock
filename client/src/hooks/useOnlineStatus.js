@@ -6,14 +6,13 @@ export default function useOnlineStatus() {
 
   useEffect(() => {
     const socket = connectSocket();
+    if (!socket) return undefined;
 
-    const onPresence = ({ onlineUserIds }) => setOnlineUserIds(onlineUserIds);
+    const onPresence = ({ onlineUserIds: ids }) => setOnlineUserIds(ids);
     socket.on("presence:update", onPresence);
 
     return () => {
       socket.off("presence:update", onPresence);
-      // Don't disconnect here — other components (like DirectFileTransfer)
-      // may still be using the same shared socket.
     };
   }, []);
 

@@ -1,0 +1,48 @@
+# Local full stack: Postgres + API (+ optional ClamAV virus scanner).
+#   docker compose up --build
+#   docker compose exec api npm run create-admin -- --email you@company.com --name "You"
+# Then run the client with `npm run dev` in ./client (VITE_API_URL=http://localhost:5000).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airlock
+      POSTGRES_PASSWORD: airlock
+      POSTGRES_DB: airlock
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airlock"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./server
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      TRUST_PROXY: 0
+      DATABASE_URL: postgresql://airlock:airlock@db:5432/airlock
+      DATABASE_SSL: "false"
+      JWT_SECRET: local-dev-only-secret-change-me-0123456789abcdef
+      FRONTEND_URL: http://localhost:5173
+      # Local email: every message lands in Mailpit at http://localhost:8025
+      SMTP_URL: smtp://mailpit:1025
+      MAIL_FROM: "Airlock <no-reply@airlock.local>"
+      # CLAMAV_HOST: clamav
+    ports: ["5000:5000"]
+    volumes: [uploads:/data/uploads]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025"]
+
+  # Uncomment to scan every upload with ClamAV (first start downloads
+  # signatures and takes a few minutes).
+  # clamav:
+  #   image: clamav/clamav:stable
+
+volumes:
+  dbdata:
+  uploads:

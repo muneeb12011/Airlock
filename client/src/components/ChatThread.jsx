@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import DirectFileTransfer from "./DirectFileTransfer";
 import useOnlineStatus from "../hooks/useOnlineStatus";
+import { readAxiosError, saveAxiosBlob } from "../lib/download";
 
 export default function ChatThread({ otherUserId, otherUserName }) {
   const { isOnline } = useOnlineStatus();
@@ -9,74 +10,89 @@ export default function ChatThread({ otherUserId, otherUserName }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
   const fileInputRef = useRef(null);
+  const threadRef = useRef(null);
 
   const load = () => {
-    if (!otherUserId) return;
-    api.get(`/messages/${otherUserId}`).then((r) => setMessages(r.data));
+    if (!otherUserId) return Promise.resolve();
+    return api.get(`/messages/${otherUserId}`).then((r) => setMessages(r.data));
   };
 
-  useEffect(() => { load(); }, [otherUserId]);
+  useEffect(() => {
+    setError("");
+    load().catch(async (err) => setError(await readAxiosError(err, "Could not load messages.")));
+  }, [otherUserId]);
+
+  useEffect(() => {
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [messages]);
 
   const send = async (e) => {
     e.preventDefault();
     if (!text.trim() && !file) return;
     if (!otherUserId) return;
-
-    const formData = new FormData();
-    if (text.trim()) formData.append("message", text.trim());
-    if (file) formData.append("file", file);
-
-    await api.post(`/messages/${otherUserId}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    setText("");
-    setFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    load();
+    setSending(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      if (text.trim()) formData.append("message", text.trim());
+      if (file) formData.append("file", file);
+      await api.post(`/messages/${otherUserId}`, formData);
+      setText("");
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await load();
+    } catch (err) {
+      setError(await readAxiosError(err, "Could not send message."));
+    } finally {
+      setSending(false);
+    }
   };
 
   const downloadAttachment = async (m) => {
     setDownloadingId(m.id);
     try {
       const res = await api.get(`/messages/file/${m.id}`, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = m.file_name || "attachment";
-      a.click();
-      window.URL.revokeObjectURL(url);
+      await saveAxiosBlob(res, m.file_name || "attachment");
     } catch (err) {
-      alert(err.response?.data?.error || "Couldn't download attachment.");
+      alert(await readAxiosError(err, "Couldn't download attachment."));
     } finally {
       setDownloadingId(null);
     }
   };
 
   if (!otherUserId) {
-    return <p style={{ color: "#79705f" }}>Select someone to message.</p>;
+    return <p className="muted">Select someone to message.</p>;
   }
 
   return (
-    <div style={styles.wrap}>
-      <div style={styles.header}>{otherUserName}</div>
-      <div style={styles.thread}>
-        {messages.length === 0 && <p style={{ color: "#5c5344", fontSize: 13 }}>No messages yet — say hello.</p>}
+    <div className="card" style={{ display: "flex", flexDirection: "column", height: "min(70vh, 520px)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
+        <span className={`live-dot ${isOnline(otherUserId) ? "ok" : ""}`} />
+        <strong>{otherUserName}</strong>
+        <span className="muted">{isOnline(otherUserId) ? "online" : "offline"}</span>
+      </div>
+      {error && <div className="banner error">{error}</div>}
+      <div ref={threadRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+        {messages.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No messages yet — say hello.</p>}
         {messages.map((m) => (
-          <div key={m.id} style={styles.msg}>
-            {m.message && <span style={styles.text}>{m.message}</span>}
+          <div key={m.id} className="card" style={{ background: "var(--bg-inset)", padding: "8px 10px" }}>
+            {m.message && <span>{m.message}</span>}
             {m.file_path && (
-              <button style={styles.attachment} disabled={downloadingId === m.id} onClick={() => downloadAttachment(m)}>
+              <button className="btn-small" type="button" disabled={downloadingId === m.id} onClick={() => downloadAttachment(m)}>
                 {downloadingId === m.id ? "Downloading..." : `📎 ${m.file_name || "attachment"}`}
               </button>
             )}
-            <span style={styles.time}>{new Date(m.created_at).toLocaleString()}</span>
+            <span className="muted" style={{ fontSize: 10.5 }}>{new Date(m.created_at).toLocaleString()}</span>
           </div>
         ))}
       </div>
-      <form onSubmit={send} style={styles.form}>
+      <form onSubmit={send} className="toolbar" style={{ marginBottom: 0 }}>
         <input
-          style={styles.input}
+          className="field"
+          style={{ flex: 1, minWidth: 120 }}
           placeholder="Type a message..."
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -84,12 +100,12 @@ export default function ChatThread({ otherUserId, otherUserName }) {
         <input
           ref={fileInputRef}
           type="file"
-          style={styles.fileInput}
+          style={{ color: "#a8a091", fontSize: 12, maxWidth: 160 }}
           onChange={(e) => setFile(e.target.files[0] || null)}
         />
-        <button style={styles.sendBtn} type="submit">Send</button>
+        <button className="btn" type="submit" disabled={sending}>{sending ? "Sending…" : "Send"}</button>
       </form>
-      {file && <div style={styles.filePreview}>Attaching: {file.name}</div>}
+      {file && <div className="muted" style={{ marginTop: 6, fontSize: 11.5 }}>Attaching: {file.name}</div>}
       <DirectFileTransfer
         otherUserId={otherUserId}
         otherUserName={otherUserName}
@@ -98,27 +114,3 @@ export default function ChatThread({ otherUserId, otherUserName }) {
     </div>
   );
 }
-
-const styles = {
-  wrap: { background: "#161310", border: "1px solid #221d16", borderRadius: 4, padding: 16, display: "flex", flexDirection: "column", height: 480 },
-  header: { fontSize: 14, fontWeight: 700, color: "#f0e9dc", marginBottom: 10, borderBottom: "1px solid #221d16", paddingBottom: 10 },
-  thread: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 },
-  msg: { background: "#100e0b", border: "1px solid #221d16", borderRadius: 4, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 },
-  text: { fontSize: 13.5, color: "#ece6da", display: "block" },
-  time: { fontSize: 10.5, color: "#5c5344" },
-  form: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },
-  input: { flex: 1, minWidth: 120, padding: "9px 10px", borderRadius: 3, border: "1px solid #2f2820", background: "#100e0b", color: "#ece6da" },
-  fileInput: { color: "#a8a091", fontSize: 12, maxWidth: 140 },
-  sendBtn: { padding: "9px 16px", borderRadius: 3, border: "none", background: "#c98a3e", color: "#171310", fontWeight: 700, cursor: "pointer" },
-  filePreview: { fontSize: 11.5, color: "#a8895a", marginTop: 6 },
-  attachment: {
-    alignSelf: "flex-start",
-    background: "#1c1712",
-    border: "1px solid #2f2820",
-    color: "#c98a3e",
-    fontSize: 12.5,
-    padding: "5px 10px",
-    borderRadius: 3,
-    cursor: "pointer",
-  },
-};

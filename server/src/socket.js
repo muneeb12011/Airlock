@@ -1,68 +1,98 @@
 import { Server } from "socket.io";
-import jwt from "jsonwebtoken";
+import { corsOrigin } from "./app.js";
 import { query } from "./db.js";
+import { userFromToken } from "./middleware/auth.js";
+import { setIo } from "./lib/realtime.js";
+import { getSettings } from "./lib/settings.js";
+import { canMessage } from "./lib/access.js";
+import { audit } from "./lib/audit.js";
 
-// userId -> Set of socket ids (a user could have multiple tabs open)
-const onlineUsers = new Map();
+// userId -> { sockets:Set }
+const online = new Map();
+const onlineIds = () => [...online.keys()];
 
-function broadcastPresence(io) {
-  io.emit("presence:update", { onlineUserIds: [...onlineUsers.keys()] });
+async function loadUser(id) {
+  const { rows } = await query(`SELECT id, name, role, is_active FROM users WHERE id = $1`, [id]);
+  return rows[0];
 }
 
 export function initSocket(httpServer) {
   const io = new Server(httpServer, {
-    cors: { origin: process.env.FRONTEND_URL || "*" },
+    cors: { origin: corsOrigin },
+    maxHttpBufferSize: 256 * 1024, // signaling only — files never pass through here
   });
+  setIo(io);
 
-  // Same check as the authenticate() HTTP middleware: verify the JWT AND
-  // confirm the user still exists, so a deleted user can't open a socket.
   io.use(async (socket, next) => {
-    try {
-      const token = socket.handshake.auth?.token;
-      if (!token) return next(new Error("No token provided"));
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      const result = await query("SELECT id, name, role FROM users WHERE id = $1", [payload.id]);
-      if (!result.rows[0]) return next(new Error("Account no longer exists"));
-      socket.user = result.rows[0];
-      next();
-    } catch (err) {
-      next(new Error("Invalid or expired token"));
-    }
+    const user = await userFromToken(socket.handshake.auth?.token);
+    if (!user) return next(new Error("unauthorized"));
+    socket.user = user;
+    next();
   });
 
-  io.on("connection", (socket) => {
-    const userId = String(socket.user.id);
+  io.on("connection", async (socket) => {
+    const { id, role } = socket.user;
+    const key = String(id);
+    socket.join(`user:${id}`);
+    if (role === "admin") socket.join("role:admin");
+    try {
+      const { rows } = await query(`SELECT project_id FROM project_members WHERE user_id = $1`, [id]);
+      for (const r of rows) socket.join(`project:${r.project_id}`);
+    } catch {
+      /* rooms are an optimisation; REST still works */
+    }
 
-    if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
-    onlineUsers.get(userId).add(socket.id);
-    broadcastPresence(io);
+    if (!online.has(key)) online.set(key, { sockets: new Set() });
+    online.get(key).sockets.add(socket.id);
+    io.emit("presence:update", { onlineUserIds: onlineIds() });
 
-    // Send the current list to the person who just connected too.
-    socket.emit("presence:update", { onlineUserIds: [...onlineUsers.keys()] });
-
-    // --- WebRTC signaling relay ---
-    // The server never sees file contents — it only forwards the connection
-    // handshake messages between the two browsers so they can find each other.
-    const relay = (event) => (payload) => {
-      const targetId = String(payload.to);
-      const targetSockets = onlineUsers.get(targetId);
-      if (!targetSockets) return; // target isn't online, sender's UI should handle this
-      for (const sockId of targetSockets) {
-        io.to(sockId).emit(event, { ...payload, from: userId });
-      }
+    // Cache of "may I talk to X" answers for this connection.
+    const allowed = new Map();
+    const mayTalkTo = async (to) => {
+      const k = String(to);
+      if (allowed.has(k)) return allowed.get(k);
+      const target = await loadUser(Number(to));
+      const ok = await canMessage(socket.user, target);
+      allowed.set(k, ok);
+      return ok;
     };
 
-    socket.on("webrtc:offer", relay("webrtc:offer"));
-    socket.on("webrtc:answer", relay("webrtc:answer"));
-    socket.on("webrtc:ice-candidate", relay("webrtc:ice-candidate"));
+    // --- WebRTC signaling relay for direct browser-to-browser transfer ---
+    // The server only forwards the handshake; file bytes never touch it.
+    const relay = (event) => async (payload = {}) => {
+      if (!online.has(String(payload.to))) return socket.emit("webrtc:error", { to: payload.to, error: "They're offline." });
+      if (!(await mayTalkTo(payload.to))) return socket.emit("webrtc:error", { to: payload.to, error: "You can't send files to this person." });
+      if (event === "webrtc:offer") {
+        const settings = await getSettings();
+        if (!settings.allow_p2p) {
+          return socket.emit("webrtc:error", { to: payload.to, error: "Direct transfers are turned off by your admin." });
+        }
+        audit(null, "p2p.offer", {
+          actor: socket.user,
+          targetType: "user",
+          targetId: payload.to,
+          meta: { name: String(payload.meta?.fileName || "").slice(0, 200), size: Number(payload.meta?.fileSize) || 0 },
+        });
+      }
+      io.to(`user:${payload.to}`).emit(event, { ...payload, from: key, fromName: socket.user.name });
+    };
+
+    for (const ev of ["webrtc:offer", "webrtc:answer", "webrtc:ice-candidate", "webrtc:decline", "webrtc:cancel"]) {
+      socket.on(ev, relay(ev));
+    }
+
+    socket.on("typing", async ({ to } = {}) => {
+      if (!to || !(await mayTalkTo(to))) return;
+      io.to(`user:${to}`).emit("typing", { from: id });
+    });
 
     socket.on("disconnect", () => {
-      const set = onlineUsers.get(userId);
-      if (set) {
-        set.delete(socket.id);
-        if (set.size === 0) onlineUsers.delete(userId);
+      const entry = online.get(key);
+      if (entry) {
+        entry.sockets.delete(socket.id);
+        if (entry.sockets.size === 0) online.delete(key);
       }
-      broadcastPresence(io);
+      io.emit("presence:update", { onlineUserIds: onlineIds() });
     });
   });
 

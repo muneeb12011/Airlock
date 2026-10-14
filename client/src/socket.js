@@ -1,32 +1,22 @@
 import { io } from "socket.io-client";
-
-// Reuse the same base URL your axios instance points at, minus any /api
-// path suffix if you have one — socket.io connects at the server root.
-const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_URL } from "./lib/config";
 
 let socket = null;
+let currentToken = null;
 
-export function getSocket() {
-  if (socket) return socket;
-
-  const token = localStorage.getItem("token");
-  socket = io(SOCKET_URL, {
-    auth: { token },
-    autoConnect: false,
-  });
-
+export function connectSocket(token) {
+  if (!token || !API_URL) return null;
+  if (socket && currentToken === token) return socket;
+  disconnectSocket();
+  currentToken = token;
+  socket = io(API_URL, { auth: { token }, transports: ["websocket", "polling"], reconnectionDelayMax: 8000 });
   return socket;
 }
 
-export function connectSocket() {
-  const s = getSocket();
-  if (!s.connected) s.connect();
-  return s;
-}
+export const getSocket = () => socket;
 
 export function disconnectSocket() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
+  if (socket) socket.disconnect();
+  socket = null;
+  currentToken = null;
 }

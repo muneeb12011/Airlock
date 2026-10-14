@@ -1,0 +1,22 @@
+{
+  "name": "airlock",
+  "private": true,
+  "version": "3.0.0",
+  "description": "Airlock — run API and web app together from the project root",
+  "scripts": {
+    "postinstall": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -k -n api,web -c green,cyan \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:api": "npm run dev --prefix server",
+    "dev:web": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "create-admin": "npm run create-admin --prefix server --",
+    "migrate": "npm run migrate --prefix server",
+    "test": "npm test --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

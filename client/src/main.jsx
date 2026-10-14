@@ -1,3 +1,7 @@
+// Fonts are bundled with the app: no third-party font requests.
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";

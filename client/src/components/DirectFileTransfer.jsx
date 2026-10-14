@@ -22,6 +22,7 @@ export default function DirectFileTransfer({ otherUserId, otherUserName, isOnlin
 
   useEffect(() => {
     const socket = connectSocket();
+    if (!socket) return undefined;
 
     const onOffer = ({ from, offer, meta }) => {
       setIncomingOffer({ from, offer, meta });
@@ -56,7 +57,7 @@ export default function DirectFileTransfer({ otherUserId, otherUserName, isOnlin
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        connectSocket().emit("webrtc:ice-candidate", { to: targetUserId, candidate: e.candidate });
+        connectSocket()?.emit("webrtc:ice-candidate", { to: targetUserId, candidate: e.candidate });
       }
     };
     pc.onconnectionstatechange = () => {
@@ -96,7 +97,7 @@ export default function DirectFileTransfer({ otherUserId, otherUserName, isOnlin
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    connectSocket().emit("webrtc:offer", {
+    connectSocket()?.emit("webrtc:offer", {
       to: otherUserId,
       offer,
       meta: { fileName: file.name, fileSize: file.size, fileType: file.type },
@@ -180,7 +181,7 @@ export default function DirectFileTransfer({ otherUserId, otherUserName, isOnlin
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    connectSocket().emit("webrtc:answer", { to: from, answer });
+    connectSocket()?.emit("webrtc:answer", { to: from, answer });
 
     setIncomingOffer(null);
   };

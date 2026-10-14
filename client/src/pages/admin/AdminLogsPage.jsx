@@ -1,48 +1,54 @@
 import { useEffect, useState } from "react";
 import api from "../../api";
+import { readAxiosError } from "../../lib/download";
 
 export default function AdminLogsPage() {
   const [logs, setLogs] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  useEffect(() => { api.get("/admin/login-logs").then((r) => setLogs(r.data)); }, []);
+  useEffect(() => {
+    api.get("/admin/login-logs")
+      .then((r) => setLogs(r.data))
+      .catch(async (err) => setError(await readAxiosError(err, "Could not load login logs.")))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = logs.filter((l) =>
     `${l.name} ${l.email}`.toLowerCase().includes(search.toLowerCase())
   );
 
+  if (loading) return <p className="muted">Loading logs…</p>;
+
   return (
     <div>
+      {error && <div className="banner error">{error}</div>}
       <input
-        style={styles.search}
+        className="search"
+        style={{ marginBottom: 16, width: "100%", maxWidth: 320 }}
         placeholder="Search by name or email..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-      <table style={styles.table}>
-        <thead>
-          <tr><th style={styles.th}>User</th><th style={styles.th}>Role</th><th style={styles.th}>IP</th><th style={styles.th}>When</th></tr>
-        </thead>
-        <tbody>
-          {filtered.map((l) => (
-            <tr key={l.id} style={styles.tr}>
-              <td style={styles.td}>{l.name} ({l.email})</td>
-              <td style={styles.td}>{l.role}</td>
-              <td style={styles.td}>{l.ip_address}</td>
-              <td style={styles.td}>{new Date(l.login_at).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {filtered.length === 0 && <p style={{ color: "#79705f", marginTop: 12 }}>No matching logins.</p>}
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr><th>User</th><th>Role</th><th>IP</th><th>When</th></tr>
+          </thead>
+          <tbody>
+            {filtered.map((l) => (
+              <tr key={l.id}>
+                <td>{l.name} ({l.email})</td>
+                <td>{l.role}</td>
+                <td>{l.ip_address}</td>
+                <td>{new Date(l.login_at).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length === 0 && <p className="muted" style={{ marginTop: 12 }}>No matching logins.</p>}
     </div>
   );
 }
-
-const styles = {
-  search: { padding: "8px 10px", borderRadius: 3, border: "1px solid #2f2820", background: "#100e0b", color: "#ece6da", marginBottom: 16, width: "100%", maxWidth: 320 },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #221d16", color: "#8a8071", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" },
-  tr: { borderBottom: "1px solid #1a1712" },
-  td: { padding: "10px 12px", fontSize: 13.5 },
-};

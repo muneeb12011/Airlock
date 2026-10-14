@@ -1,10 +1,5 @@
-﻿node_modules/
+node_modules/
 .env
-.env.local
 uploads/*
 !uploads/.gitkeep
 *.log
-npm-debug.log*
-.DS_Store
-.vscode/
-.idea/

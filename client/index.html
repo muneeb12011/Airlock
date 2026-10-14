@@ -2,10 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Task Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Airlock — secure projects, reviews and file handoff for teams</title>
+    <meta name="description" content="Airlock is a work hub for marketing, engineering and design teams: projects, task reviews, content calendars and messages, with two-step sign-in, malware-checked file sharing and a tamper-evident audit log." />
+    <meta name="application-name" content="Airlock" />
+    <meta name="apple-mobile-web-app-title" content="Airlock" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#e7ebee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1418" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- A private workspace: keep sign-in pages out of search results. Link previews still work. -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Link previews (Slack, WhatsApp, LinkedIn, X, iMessage) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Airlock" />
+    <meta property="og:title" content="Airlock — nothing gets in or out unchecked" />
+    <meta property="og:description" content="Projects, reviews and file handoff for teams, with two-step sign-in, malware-checked files and a tamper-evident audit log." />
+    <meta property="og:image" content="%OG_IMAGE%" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Airlock logo, an arched door with a green status light, beside the line: Nothing gets in or out unchecked." />
+    <meta property="og:url" content="%PUBLIC_URL%" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Airlock — nothing gets in or out unchecked" />
+    <meta name="twitter:description" content="Projects, reviews and file handoff for teams, with two-step sign-in, malware-checked files and a tamper-evident audit log." />
+    <meta name="twitter:image" content="%OG_IMAGE%" />
+
+    <script>
+      try { var t = localStorage.getItem("airlock-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
   </head>
   <body>
+    <noscript>Airlock needs JavaScript to run.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
